@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Daily Health log</title>
+    <style>
+        :root { --muted: #64748b; }
+        body { font-family: sans-serif; margin: 40px auto; max-width: 760px; background: #f0f6fc; color: #1e293b; }
+        h2 { border-bottom: 2px solid #dbeafe; padding-bottom: 8px; margin-top: 30px; color: #1d4ed8; }
+        form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.08); border: 1px solid #dbeafe; }
+        input, select, button { padding: 10px; font-size: 16px; border-radius: 6px; border: 1px solid #bfdbfe; background: #f8fafc; color: #0f172a; }
+        input:focus, select:focus { outline: none; border-color: #2563eb; background: #ffffff; }
+        button[type="submit"] { background: #16a34a; color: #ffffff; font-weight: bold; cursor: pointer; border: none; transition: background 0.2s; }
+        button[type="submit"]:hover { background: #15803d; }
+        
+        /* Coaching Output Styles */
+        .ai-response { padding: 16px; border-radius: 8px; margin-bottom: 25px; background: #ffffff; border-left: 6px solid #2563eb; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.08); }
+        .ai-response.hit { border-left-color: #16a34a; background: #f0fdf4; }
+        .ai-response.miss { border-left-color: #2563eb; background: #eff6ff; }
+        .label-sm { font-size: 0.75rem; text-transform: uppercase; color: #2563eb; font-weight: bold; letter-spacing: 1px; }
+        .ai-response.hit .label-sm { color: #16a34a; }
+        .prediction { font-size: 1.2rem; font-weight: bold; margin-top: 4px; color: #0f172a; }
+        .coaching { margin-top: 4px; line-height: 1.5; color: #334155; }
+        
+        /* Protocol Badges */
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+        .badge-omad { background: #dbeafe; color: #1e40af; }
+        .badge-2mad { background: #dcfce7; color: #166534; }
+        .badge-auto { background: #fef3c7; color: #92400e; }
+
+        /* 2x2 Charts Grid */
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .chart-card { background: #ffffff; padding: 14px; border-radius: 8px; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.08); border: 1px solid #dbeafe; }
+        .chart-title { font-size: 0.85rem; font-weight: bold; color: #1e40af; margin-bottom: 8px; }
+        .chart-card canvas { width: 100%; height: 150px; display: block; }
+        
+        /* History Header & Table Styles */
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .stats-bar { font-size: 0.9rem; color: #1e40af; font-weight: 600; }
+        .action-btns { display: flex; gap: 8px; }
+        .export-btn { background: #2563eb; color: #ffffff; font-size: 0.85rem; padding: 6px 14px; border: none; cursor: pointer; font-weight: 600; }
+        .export-btn:hover { background: #1d4ed8; }
+        .clear-btn { background: #e2e8f0; color: #334155; font-size: 0.85rem; padding: 6px 14px; border: none; cursor: pointer; font-weight: 600; }
+        .clear-btn:hover { background: #cbd5e1; }
+        table { width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.08); border: 1px solid #dbeafe; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #2563eb; color: #ffffff; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+    <h2>SMP AI Health Coach</h2>
+    <form id="coachForm">
+        <select id="inDiet" required>
+            <option value="" disabled selected>Select Diet Protocol...</option>
+            <option value="OMAD">OMAD (One Meal A Day)</option>
+            <option value="2MAD">2MAD (Two Meals A Day)</option>
+            <option value="Autophagy Marathon">Autophagy Marathon (Extended Fast)</option>
+        </select>
+        <input type="number" id="inSleep" placeholder="Hours of Sleep (Target: 8h)" step="0.1" required>
+        <input type="number" id="inWater" placeholder="Water in glasses (Target: 8 gl)" required>
+        <input type="number" id="inSteps" placeholder="Steps taken (Target: 10,000)" required>
+        <button type="submit">Log Daily Check-In</button>
+    </form>
+
+    <div id="coachDisplay" class="ai-response idle">
+        <div class="label-sm">Status</div>
+        <div class="coaching">Select your diet protocol and enter your daily metrics above to check your status.</div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 30px; border-bottom: 2px solid #dbeafe; padding-bottom: 8px;">
+        <h2 style="border: none; margin: 0; padding: 0;">Progress Trends</h2>
+        <select id="timeRangeSelect" style="width: auto; padding: 6px 12px; font-size: 0.9rem; font-weight: 600; color: #1e40af; border-color: #93c5fd;">
+            <option value="7">Last 7 Days</option>
+            <option value="30">Last 30 Days</option>
+            <option value="all" selected>All Time</option>
+        </select>
+    </div>
+    <div class="charts-grid">
+        <div class="chart-card">
+            <div class="chart-title">Overall Score (%)</div>
+            <canvas id="scoreChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">Steps Taken (Target: 10,000)</div>
+            <canvas id="stepsChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">Sleep Hours (Target: 8h)</div>
+            <canvas id="sleepChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">Water Glasses (Target: 8 gl)</div>
+            <canvas id="waterChart"></canvas>
+        </div>
+    </div>
+
+    <h2>Saved History Log</h2>
+    <div class="history-header">
+        <div id="hitRateDisplay" class="stats-bar">Overall Hit Rate: 0% (0/0 entries)</div>
+        <div class="action-btns">
+            <button id="exportBtn" class="export-btn" type="button">Export CSV</button>
+            <button id="clearBtn" class="clear-btn" type="button">Clear History</button>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Date & Time</th>
+                <th>Day</th>
+                <th>Protocol</th>
+                <th>Sleep</th>
+                <th>Water</th>
+                <th>Steps</th>
+                <th>Score</th>
+                <th>Outcome</th>
+            </tr>
+        </thead>
+        <tbody id="historyTable"></tbody>
+    </table>
+    <script>
+        const STORAGE_KEY = "smp_coach_history";
+
+        const evaluateDay = (sleep, water, steps, diet) => {
+            const sleepScore = Math.min(sleep / 8.0, 1.0) * 35;
+            const waterScore = Math.min(water / 8.0, 1.0) * 25;
+            const stepsScore = Math.min(steps / 10000, 1.0) * 40;
+            const score      = Math.round(sleepScore + waterScore + stepsScore);
+            const hitGoal    = score >= 60;
+
+            const sleepStatus = sleep >= 7.5 ? "Sleep is solid" : (sleep >= 6 ? "Sleep is slightly low" : "Sleep is inadequate");
+            const waterStatus = water >= 8   ? "water is optimal" : (water >= 5 ? "water is moderate" : "water is inadequate");
+            const stepsStatus = steps >= 10000 ? "steps target hit" : (steps >= 6000 ? "steps are moderate" : "steps are low");
+            const summary = sleepStatus + ", " + waterStatus + ", and " + stepsStatus + ".";
+
+            let tips = [];
+            if (sleep < 7.5) tips.push("Aim for bed 45 minutes earlier tonight to hit 8 hours.");
+            if (water < 8)   tips.push("Drink " + (8 - water) + " more glasses of water to reach your 8-glass baseline.");
+            if (steps < 10000) tips.push("Add a brisk " + Math.ceil((10000 - steps) / 100) + "-minute walk to close your step gap.");
+            
+            if (diet === "Autophagy Marathon") {
+                tips.push("Keep electrolytes balanced and stay well-hydrated during your extended fast.");
+            } else if (diet === "OMAD") {
+                tips.push("Prioritize high protein and micronutrients in your single meal window.");
+            } else if (diet === "2MAD") {
+                tips.push("Avoid snacking between your two meals to keep insulin steady.");
+            }
+
+            if (tips.length === 0) tips.push("All baselines are locked in. Maintain this exact rhythm tomorrow.");
+            return { score, hitGoal, summary, advice: tips.join(" ") };
+        };
+
+        let sessionLog = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        const saveToStorage = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionLog));
+
+        const logEntry = (diet, sleep, water, steps, hitGoal, score) => {
+            const now = new Date();
+            const entry = {
+                id: sessionLog.length + 1,
+                timestamp: now.getTime(),
+                date: now.toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' }),
+                time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                day: now.toLocaleDateString([], { weekday: 'long' }),
+                diet, sleep, water, steps, hitGoal, score
+            };
+            sessionLog.push(entry);
+            saveToStorage();
+        };
+
+        const drawSingleChart = (canvasId, values, xLabels, maxVal, targetVal, targetLabel, lineColor, formatFn) => {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.parentElement.clientWidth - 28;
+            canvas.height = 165;
+
+            const w = canvas.width;
+            const h = canvas.height;
+            const padTop = 22;
+            const padBottom = 26;
+            const padX = 26;
+            const plotH = h - padTop - padBottom;
+            ctx.clearRect(0, 0, w, h);
+
+            const maxObserved = values.length ? Math.max(...values) : targetVal;
+            const ceiling = Math.max(maxVal, maxObserved, targetVal);
+
+            const goalY = h - padBottom - ((targetVal / ceiling) * plotH);
+            ctx.strokeStyle = '#16a34a';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(padX, goalY);
+            ctx.lineTo(w - padX, goalY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#16a34a';
+            ctx.font = '10px sans-serif';
+            ctx.fillText(targetLabel, padX, goalY - 4);
+
+            if (!values.length) {
+                ctx.fillStyle = '#64748b';
+                ctx.fillText('No data yet', w / 2 - 25, h / 2);
+                return;
+            }
+
+            const stepX = values.length > 1 ? (w - padX * 2) / (values.length - 1) : 0;
+            const points = values.map((val, i) => ({
+                x: values.length === 1 ? w / 2 : padX + i * stepX,
+                y: h - padBottom - ((val / ceiling) * plotH),
+                met: val >= targetVal,
+                label: formatFn(val),
+                xLabel: xLabels[i] || ''
+            }));
+
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            points.forEach((point, index) => {
+                if (index === 0) {
+                    ctx.moveTo(point.x, point.y);
+                } else {
+                    ctx.lineTo(point.x, point.y);
+                }
+            });
+            ctx.stroke();
+
+            points.forEach((point, index) => {
+                ctx.fillStyle = point.met ? '#16a34a' : '#2563eb';
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#334155';
+                ctx.font = '10px sans-serif';
+                ctx.fillText(point.label, point.x - 12, point.y - 10);
+
+                if (index === points.length - 1 || index % Math.max(1, Math.ceil(points.length / 4)) === 0) {
+                    ctx.fillStyle = '#64748b';
+                    ctx.fillText(point.xLabel, point.x - 16, h - 10);
+                }
+            });
+        };
+
+        const getFilteredLogs = () => {
+            const range = document.getElementById('timeRangeSelect').value;
+            if (range === 'all') return sessionLog;
+
+            const days = parseInt(range, 10);
+            const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+            return sessionLog.filter(e => {
+                const entryTime = e.timestamp || (e.date ? new Date(e.date).getTime() : Date.now());
+                return entryTime >= cutoff;
+            });
+        };
+
+        const renderAllCharts = () => {
+            const logs = getFilteredLogs();
+            const dateLabels = logs.map(e => {
+                if (!e.date) return e.time;
+                return e.date.split(' ').slice(0, 2).join(' ');
+            });
+
+            drawSingleChart('scoreChart', logs.map(e => e.score), dateLabels, 100, 60, 'Pass (60%)', '#2563eb', v => v + '%');
+            drawSingleChart('stepsChart', logs.map(e => e.steps), dateLabels, 12000, 10000, '10k Goal', '#0284c7', v => (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v));
+            drawSingleChart('sleepChart', logs.map(e => e.sleep), dateLabels, 10, 8, '8h Goal', '#2563eb', v => v + 'h');
+            drawSingleChart('waterChart', logs.map(e => e.water), dateLabels, 12, 8, '8 gl Goal', '#0d9488', v => v + 'gl');
+        };
+
+
+        const getBadgeHtml = (diet) => {
+            if (!diet) return '<span class="badge badge-omad">Standard</span>';
+            if (diet === "OMAD") return '<span class="badge badge-omad">OMAD</span>';
+            if (diet === "2MAD") return '<span class="badge badge-2mad">2MAD</span>';
+            return '<span class="badge badge-auto">Autophagy</span>';
+        };
+
+        const renderHistory = () => {
+            const tableEl   = document.querySelector('#historyTable');
+            const hitRateEl = document.querySelector('#hitRateDisplay');
+
+            if (!sessionLog.length) {
+                tableEl.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:1rem;">No entries saved yet.</td></tr>';
+                hitRateEl.textContent = 'Overall Hit Rate: 0% (0/0 entries)';
+                renderAllCharts();
+                return;
+            }
+
+            const hits = sessionLog.filter(e => e.hitGoal).length;
+            const hitRate = Math.round((hits / sessionLog.length) * 100);
+            hitRateEl.textContent = 'Overall Hit Rate: ' + hitRate + '% (' + hits + '/' + sessionLog.length + ' entries)';
+
+            tableEl.innerHTML = sessionLog.map(e => {
+                const outcomeColor = e.hitGoal ? "#16a34a" : "#2563eb";
+                const outcome = e.hitGoal ? "HIT" : "MISS";
+                const dateLabel = e.date ? e.date + ' • ' : '';
+                const dayName = e.day || (e.date ? new Date(e.date).toLocaleDateString([], { weekday: 'long' }) : '-');
+                return '<tr><td style="color:#64748b;font-size:0.85rem;">' + dateLabel + e.time + '</td><td style="font-weight:600;color:#1e40af;">' + dayName + '</td><td>' + getBadgeHtml(e.diet) + '</td><td>' + e.sleep + 'h</td><td>' + e.water + ' gl</td><td>' + e.steps.toLocaleString() + '</td><td><strong>' + e.score + '</strong>%</td><td style="color:' + outcomeColor + ';font-weight:700;">' + outcome + '</td></tr>';
+            }).join('');
+
+            renderAllCharts();
+        };
+
+        const exportToCSV = () => {
+            if (!sessionLog.length) return alert("No entries to export yet!");
+            const headers = ["ID", "Date", "Time", "Day", "Diet Protocol", "Sleep (hrs)", "Water (glasses)", "Steps", "Outcome", "Score (%)"];
+            const rows = sessionLog.map(e => {
+                const dayName = e.day || (e.date ? new Date(e.date).toLocaleDateString([], { weekday: 'long' }) : '');
+                return [e.id, '"' + (e.date || '') + '"', '"' + e.time + '"', '"' + dayName + '"', '"' + (e.diet || 'Standard') + '"', e.sleep, e.water, e.steps, e.hitGoal ? "HIT" : "MISS", e.score];
+            });
+            const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url  = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = 'health_coach_logs_' + new Date().toISOString().slice(0, 10) + '.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        };
+
+
+        document.querySelector('#coachForm').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const diet  = document.querySelector('#inDiet').value;
+            const sleep = parseFloat(document.querySelector('#inSleep').value);
+            const water = parseInt(document.querySelector('#inWater').value);
+            const steps = parseInt(document.querySelector('#inSteps').value);
+            if (!diet || isNaN(sleep) || isNaN(water) || isNaN(steps)) return;
+
+            const result  = evaluateDay(sleep, water, steps, diet);
+            const display = document.querySelector('#coachDisplay');
+
+            display.className = 'ai-response ' + (result.hitGoal ? "hit" : "miss");
+            display.innerHTML = '<div class="label-sm">Daily Status • ' + diet + ' (Score: ' + result.score + '%)</div><div class="prediction">' + result.summary + '</div><div class="label-sm" style="margin-top:0.8rem;">Advice to Take</div><div class="coaching">' + result.advice + '</div>';
+
+            logEntry(diet, sleep, water, steps, result.hitGoal, result.score);
+            renderHistory();
+            event.target.reset();
+        });
+
+        document.querySelector('#exportBtn').addEventListener('click', exportToCSV);
+
+        document.querySelector('#clearBtn').addEventListener('click', () => {
+            sessionLog = [];
+            localStorage.removeItem(STORAGE_KEY);
+            renderHistory();
+        });
+
+        document.getElementById('timeRangeSelect').addEventListener('change', renderAllCharts);
+        window.addEventListener('resize', renderAllCharts);
+        renderHistory();
+    </script>
+</body>
+</html>
